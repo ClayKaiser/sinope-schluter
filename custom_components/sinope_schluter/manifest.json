@@ -1,0 +1,13 @@
+{
+  "domain": "sinope_schluter",
+  "name": "Schluter DITRA-HEAT-E-RS1",
+  "config_flow": true,
+  "codeowners": [
+    "@ClayKaiser"
+  ],
+  "documentation": "https://github.com/ClayKaiser/sinope-schluter",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/ClayKaiser/sinope-schluter/issues",
+  "version": "1.0.0"
+}

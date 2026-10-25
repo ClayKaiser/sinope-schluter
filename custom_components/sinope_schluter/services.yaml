@@ -1,0 +1,96 @@
+set_activation:
+  description: Enable or pause polling for a thermostat that is unavailable or reconnects.
+  fields:
+    active:
+      description: Activate «True» or deactivate device «False».
+      example: False
+
+set_climate_keypad_lock:
+  description: Lock or unlock climate device keypad.
+  fields:
+    lockKeypad:
+      description: Device keypad status to set «locked» = Locked, «unlocked» = Unlocked.
+      example: "locked"
+
+set_time_format:
+  description: Set climate device time format 12h or 24h.
+  fields:
+    timeFormat:
+      description: Time format to set, 12  or 24.
+      example: 24
+
+set_temperature_format:
+  description: Set climate device temperature format, celsius or fahrenheit.
+  fields:
+    temperatureFormat:
+      description: Temperature format to set, «celsius» or «fahrenheit».
+      example: "celsius"
+
+set_early_start:
+  description: Set climate device heating early start on/off.
+  fields:
+    earlyStart:
+      description: «on» or «off», earlyStart status to set on/off.
+      example: "on"
+
+set_second_display:
+  description: Set the thermostat display to show the setpoint or outside temperature.
+  fields:
+    secondaryDisplay:
+      description: «outsideTemperature» = outside temperature display, «default» = setpoint display.
+      example: "outsideTemperature"
+
+set_backlight:
+  description: Set backlight intensity when idle; 0 is off and 100 is always on.
+  fields:
+    backlightIntensityIdle:
+      description: 0 = off when idle, 100 always on.
+      example: 100
+
+set_setpoint_max:
+  description: Set the maximum room temperature setpoint.
+  fields:
+    roomSetpointMax:
+      description: setpoint maximum temperature to set.
+      example: 25
+
+set_setpoint_min:
+  description: Set the minimum room temperature setpoint.
+  fields:
+    roomSetpointMin:
+      description: setpoint minimum temperature to set.
+      example: 10
+
+set_air_floor_mode:
+  description: Set floor thermostat control mode; Air or Floor.
+  fields:
+    airFloorMode:
+      description: Set to "airByFloor" for ambiant temperature or to "floor" for floor temperature.
+      example: "floor"
+
+set_aux_cycle_length:
+  description: Set low voltage thermostats auxilary cycle length in minutes.
+  fields:
+    value:
+      description: cycle lencht in minutes. Accepted values are "15 sec", "5 min", "10 min", "15 min", "20 min", "25 min", "30 min".
+      example: "10 min"
+
+set_cycle_length:
+  description: Set low voltage thermostats main cycle length in minutes.
+  fields:
+    value:
+      description: cycle lencht in minutes. Accepted values are "15 sec", "5 min", "10 min", "15 min", "20 min", "25 min", "30 min".
+      example: "10 min"
+
+set_eco_status:
+  description: Set Eco status to on or off for Schluter thermostats.
+  fields:
+    status:
+      description: Set to «0» to turn off Eco, to «1» to turn on Eco.
+      example: 1
+
+set_em_heat:
+  description: Turn emergency heat on/off.
+  fields:
+    value:
+      description: Set to «on» or «off» to turn_on or turn_off emergency heat.
