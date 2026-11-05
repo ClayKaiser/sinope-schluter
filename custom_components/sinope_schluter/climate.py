@@ -26,7 +26,6 @@ from homeassistant.const import (
 
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
@@ -585,7 +584,6 @@ class SchluterThermostat(CoordinatorEntity, ClimateEntity):
             name=self._name,
             manufacturer="Schluter",
             model=self._sku,
-            entry_type=DeviceEntryType.SERVICE,
         )
 
     @property
