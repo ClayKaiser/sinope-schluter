@@ -212,7 +212,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_ACTIVATION,
             SET_ACTIVATION_SCHEMA,
-            "set_activation",
+            "async_set_activation",
             ATTR_ACTIVE,
             "active",
             False,
@@ -220,7 +220,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_SECOND_DISPLAY,
             SET_SECOND_DISPLAY_SCHEMA,
-            "set_second_display",
+            "async_set_second_display",
             ATTR_DISPLAY_2,
             "display",
             False,
@@ -228,7 +228,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_BACKLIGHT,
             SET_BACKLIGHT_SCHEMA,
-            "set_backlight",
+            "async_set_backlight",
             ATTR_BACKLIGHT,
             "level",
             False,
@@ -236,7 +236,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_CLIMATE_KEYPAD_LOCK,
             SET_CLIMATE_KEYPAD_LOCK_SCHEMA,
-            "set_keypad_lock",
+            "async_set_keypad_lock",
             ATTR_KEYPAD,
             "lock",
             False,
@@ -244,7 +244,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_EARLY_START,
             SET_EARLY_START_SCHEMA,
-            "set_early_start",
+            "async_set_early_start",
             ATTR_EARLY_START,
             "start",
             False,
@@ -252,7 +252,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_TIME_FORMAT,
             SET_TIME_FORMAT_SCHEMA,
-            "set_time_format",
+            "async_set_time_format",
             ATTR_TIME,
             "time",
             False,
@@ -260,7 +260,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_TEMPERATURE_FORMAT,
             SET_TEMPERATURE_FORMAT_SCHEMA,
-            "set_temperature_format",
+            "async_set_temperature_format",
             ATTR_TEMP,
             "temp",
             False,
@@ -268,7 +268,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_SETPOINT_MAX,
             SET_SETPOINT_MAX_SCHEMA,
-            "set_setpoint_max",
+            "async_set_setpoint_max",
             ATTR_ROOM_SETPOINT_MAX,
             "temp",
             False,
@@ -276,7 +276,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_SETPOINT_MIN,
             SET_SETPOINT_MIN_SCHEMA,
-            "set_setpoint_min",
+            "async_set_setpoint_min",
             ATTR_ROOM_SETPOINT_MIN,
             "temp",
             False,
@@ -284,7 +284,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_AIR_FLOOR_MODE,
             SET_AIR_FLOOR_MODE_SCHEMA,
-            "set_air_floor_mode",
+            "async_set_air_floor_mode",
             ATTR_FLOOR_MODE,
             "mode",
             False,
@@ -292,7 +292,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_CYCLE_LENGTH,
             SET_CYCLE_LENGTH_SCHEMA,
-            "set_cycle_length",
+            "async_set_cycle_length",
             ATTR_VALUE,
             "length",
             True,
@@ -300,7 +300,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_AUX_CYCLE_LENGTH,
             SET_AUX_CYCLE_LENGTH_SCHEMA,
-            "set_aux_cycle_length",
+            "async_set_aux_cycle_length",
             ATTR_VALUE,
             "length",
             True,
@@ -308,7 +308,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_ECO_STATUS,
             SET_ECO_STATUS_SCHEMA,
-            "set_eco_status",
+            "async_set_eco_status",
             ATTR_STATUS,
             "status",
             False,
@@ -316,7 +316,7 @@ async def async_setup_entry(
         (
             SERVICE_SET_EM_HEAT,
             SET_EM_HEAT_SCHEMA,
-            "set_em_heat",
+            "async_set_em_heat",
             ATTR_VALUE,
             None,
             False,
@@ -334,7 +334,6 @@ async def async_setup_entry(
             service_name,
             schema,
             _entity_service_handler(
-                hass,
                 method_name,
                 field,
                 value_key,
@@ -344,30 +343,26 @@ async def async_setup_entry(
 
 
 def _entity_service_handler(
-    hass, method_name, field, value_key, *, first_value=False
+    method_name, field, value_key, *, first_value=False
 ):
-    """Create an entity service that invokes the blocking Schluter API off-loop."""
+    """Create an entity service handler for an asynchronous entity method."""
 
     async def async_handle(entity, service_call):
         value = service_call.data[field]
 
-        def call_service():
-            if method_name == "set_em_heat":
-                if value == "on":
-                    entity.turn_em_heat_on()
-                else:
-                    entity.turn_em_heat_off()
-                return
-
+        if method_name == "async_set_em_heat":
+            if value == "on":
+                await entity.async_turn_em_heat_on()
+            else:
+                await entity.async_turn_em_heat_off()
+        else:
             if first_value:
                 value_to_set = value[0]
             else:
                 value_to_set = value
-            getattr(entity, method_name)(
+            await getattr(entity, method_name)(
                 {"id": entity.unique_id, value_key: value_to_set}
             )
-
-        await hass.async_add_executor_job(call_service)
         entity.async_write_ha_state()
 
     return async_handle
@@ -729,29 +724,29 @@ class SchluterThermostat(CoordinatorEntity, ClimateEntity):
         """Return available horizontal swing modes"""
         return None
 
-    def set_activation(self, value):
+    async def async_set_activation(self, value):
         """Activate or deactivate polling for a missing thermostat."""
         self._active = value["active"]
 
-    def turn_on(self):
+    async def async_turn_on(self):
         """Turn the thermostat to HVACMode.heat on."""
-        self._client.set_setpoint_mode(self._id, MODE_MANUAL)
+        await self._client.async_set_setpoint_mode(self._id, MODE_MANUAL)
         self._operation_mode = HVACMode.HEAT
 
-    def turn_off(self):
+    async def async_turn_off(self):
         """Turn the thermostat to HVACMode.off."""
-        self._client.set_setpoint_mode(self._id, MODE_OFF)
+        await self._client.async_set_setpoint_mode(self._id, MODE_OFF)
         self._operation_mode = HVACMode.OFF
 
-    def set_temperature(self, **kwargs):
+    async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        self._client.set_temperature(self._id, temperature)
+        await self._client.async_set_temperature(self._id, temperature)
         self._target_temp = temperature
 
-    def set_second_display(self, value):
+    async def async_set_second_display(self, value):
         """ Set thermostat second display between outside and setpoint temperature. """
         display = value["display"]
         entity = value["id"]
@@ -761,28 +756,28 @@ class SchluterThermostat(CoordinatorEntity, ClimateEntity):
         else:
             display_command = "outsideTemperature"
             display_name = "Outside"
-        self._client.set_second_display(
+        await self._client.async_set_second_display(
             entity, display_command)
         self._display_2 = display_name
 
-    def set_backlight(self, value):
+    async def async_set_backlight(self, value):
         """ Set thermostat backlight intensity when idle, 0 = off, 100 = always on. """
         level = value["level"]
         entity = value["id"]
-        self._client.set_backlight(
+        await self._client.async_set_backlight(
             entity, level)
         self._backlight = level
 
-    def set_keypad_lock(self, value):
+    async def async_set_keypad_lock(self, value):
         """ Lock or unlock device's keypad, «locked» = Locked, «unlocked» = Unlocked. """
         lock = value["lock"]
         entity = value["id"]
         _LOGGER.debug("lock.data.before = %s", lock)
-        self._client.set_keypad_lock(
+        await self._client.async_set_keypad_lock(
             entity, lock)
         self._keypad = lock
 
-    def set_early_start(self, value):
+    async def async_set_early_start(self, value):
         """set early start heating for thermostat, On = early start set to on, Off = set to Off"""
         """This function is not available for Ouellet OTH3600-GA-GT"""
         if self._sku == "OTH3600-GA-GT":
@@ -790,11 +785,11 @@ class SchluterThermostat(CoordinatorEntity, ClimateEntity):
         else:
             start = value["start"]
             entity = value["id"]
-            self._client.set_early_start(
+            await self._client.async_set_early_start(
                 entity, start)
             self._early_start = start
 
-    def set_time_format(self, value):
+    async def async_set_time_format(self, value):
         """set time format 12h or 24h"""
         time = value["time"]
         entity = value["id"]
@@ -802,93 +797,93 @@ class SchluterThermostat(CoordinatorEntity, ClimateEntity):
             time_commande = "12h"
         else:
             time_commande = "24h"
-        self._client.set_time_format(
+        await self._client.async_set_time_format(
             entity, time_commande)
         self._time_format = time_commande
 
-    def set_temperature_format(self, value):
+    async def async_set_temperature_format(self, value):
         """set temperature format celsius or fahrenheit"""
         temp = value["temp"]
         entity = value["id"]
-        self._client.set_temperature_format(
+        await self._client.async_set_temperature_format(
             entity, temp)
         if temp == "celsius":
             self._temperature_format = UnitOfTemperature.CELSIUS
         else:
             self._temperature_format = UnitOfTemperature.FAHRENHEIT
 
-    def set_setpoint_max(self, value):
+    async def async_set_setpoint_max(self, value):
         """set maximum setpoint temperature"""
         temp = value["temp"]
         entity = value["id"]
-        self._client.set_setpoint_max(
+        await self._client.async_set_setpoint_max(
             entity, temp)
         self._max_temp = temp
 
-    def set_setpoint_min(self, value):
+    async def async_set_setpoint_min(self, value):
         """set minimum setpoint temperature"""
         temp = value["temp"]
         entity = value["id"]
-        self._client.set_setpoint_min(
+        await self._client.async_set_setpoint_min(
             entity, temp)
         self._min_temp = temp
 
-    def set_air_floor_mode(self, value):
+    async def async_set_air_floor_mode(self, value):
         """ set ambiant or floor temperature control"""
         mode = value["mode"]
         entity = value["id"]
-        self._client.set_air_floor_mode(
+        await self._client.async_set_air_floor_mode(
             entity, mode)
         self._floor_mode = mode
 
-    def set_eco_status(self, value):
+    async def async_set_eco_status(self, value):
         """ set eco status on/off"""
         status = value["status"]
         entity = value["id"]
-        self._client.set_eco_status(
+        await self._client.async_set_eco_status(
             entity, status)
         self._shed_stat_temp = status
 
-    def set_hvac_mode(self, hvac_mode):
+    async def async_set_hvac_mode(self, hvac_mode):
         """Set new hvac mode."""
         if hvac_mode == HVACMode.OFF:
-            self._client.set_setpoint_mode(self._id, MODE_OFF)
+            await self._client.async_set_setpoint_mode(self._id, MODE_OFF)
         elif hvac_mode == HVACMode.HEAT:
-            self._client.set_setpoint_mode(self._id, MODE_MANUAL)
+            await self._client.async_set_setpoint_mode(self._id, MODE_MANUAL)
         elif hvac_mode == HVACMode.AUTO:
-            self._client.set_setpoint_mode(self._id, MODE_AUTO)
+            await self._client.async_set_setpoint_mode(self._id, MODE_AUTO)
         else:
             _LOGGER.error("Unable to set hvac mode: %s.", hvac_mode)
         self._operation_mode = hvac_mode
 
-    def set_preset_mode(self, preset_mode):
+    async def async_set_preset_mode(self, preset_mode):
         """Activate a preset."""
         if preset_mode == self.preset_mode:
             return
         if preset_mode == PRESET_AWAY:
-            self._client.set_setpoint_mode(self._id, MODE_AWAY)
+            await self._client.async_set_setpoint_mode(self._id, MODE_AWAY)
         elif preset_mode == PRESET_BYPASS:
             if self._operation_mode == MODE_AUTO:
-                self._client.set_setpoint_mode(self._id, MODE_AUTO_BYPASS)
+                await self._client.async_set_setpoint_mode(self._id, MODE_AUTO_BYPASS)
         elif preset_mode == PRESET_ECO:
-            self._client.set_setpoint_mode(self._id, MODE_FROST_PROTEC)
+            await self._client.async_set_setpoint_mode(self._id, MODE_FROST_PROTEC)
         elif preset_mode == PRESET_NONE:
             # Re-apply current hvac_mode without any preset
-            self.set_hvac_mode(self.hvac_mode)
+            await self.async_set_hvac_mode(self.hvac_mode)
         else:
             _LOGGER.error("Unable to set preset mode: %s.", preset_mode)
         self._operation_mode = preset_mode
 
-    def set_cycle_length(self, value):
+    async def async_set_cycle_length(self, value):
         """Set main cycle length for low voltage thermostats"""
         val = value["length"]
         entity = value["id"]
         length = [v for k, v in HA_TO_SCHLUTER_PERIOD.items() if k == val][0]
-        self._client.set_cycle_length(
+        await self._client.async_set_cycle_length(
             entity, length)
         self._cycle_length = length
 
-    def set_aux_cycle_length(self, value):
+    async def async_set_aux_cycle_length(self, value):
         """Set auxiliary cycle length for low voltage thermostats"""
         val = value["length"]
         entity = value["id"]
@@ -897,19 +892,19 @@ class SchluterThermostat(CoordinatorEntity, ClimateEntity):
             output = "shortCycle"
         else:
             output = "longCycle"
-        self._client.set_aux_cycle_length(
+        await self._client.async_set_aux_cycle_length(
             entity, output, length)
         self._aux_cycle_config = output
         self._aux_cycle_length = length
 
-    def turn_em_heat_on(self):
+    async def async_turn_em_heat_on(self):
         """Turn emergency heater on."""
+        await self._client.async_set_em_heat(
+            self._id, "slave", self._aux_cycle_length, self._is_floor)
         self._em_heat = "slave"
-        self._client.set_em_heat(
-            self._id, self._em_heat, self._aux_cycle_length, self._is_floor)
 
-    def turn_em_heat_off(self):
+    async def async_turn_em_heat_off(self):
         """Turn emergency heater off."""
-        self._em_heat = "off"
-        self._client.set_em_heat(
+        await self._client.async_set_em_heat(
             self._id, "off", self._aux_cycle_length, self._is_floor)
+        self._em_heat = "off"

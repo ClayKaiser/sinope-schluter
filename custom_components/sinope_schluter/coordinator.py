@@ -120,7 +120,7 @@ class SchluterCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, JsonObject]:
         """Fetch the latest state for each supported thermostat."""
         try:
-            return await self.hass.async_add_executor_job(self._fetch_data)
+            return await self._async_fetch_data()
         except SchluterInvalidAuth as err:
             raise ConfigEntryAuthFailed(
                 "Schluter rejected the account credentials"
@@ -128,21 +128,21 @@ class SchluterCoordinator(DataUpdateCoordinator):
         except SchluterError as err:
             raise UpdateFailed(f"Unable to update Schluter data: {err}") from err
 
-    def _fetch_data(self) -> dict[str, JsonObject]:
+    async def _async_fetch_data(self) -> dict[str, JsonObject]:
         """Fetch data, reconnecting once if the API session expires."""
         for attempt in range(2):
             try:
-                return self._fetch_data_once()
+                return await self._async_fetch_data_once()
             except SchluterSessionExpired:
                 if attempt:
                     raise SchluterError("Schluter session expired after reconnecting")
                 _LOGGER.warning("Schluter session expired; reconnecting")
-                self.client.reconnect()
+                await self.client.async_reconnect()
 
         raise SchluterError("Unable to refresh Schluter data")
 
-    def _fetch_data_once(self) -> dict[str, JsonObject]:
-        """Fetch data using the blocking API client."""
+    async def _async_fetch_data_once(self) -> dict[str, JsonObject]:
+        """Fetch data using the asynchronous API client."""
         now = time.monotonic()
         devices: dict[str, JsonObject] = {}
         device_count = 0
@@ -152,7 +152,7 @@ class SchluterCoordinator(DataUpdateCoordinator):
             device_count += 1
             device_id = str(device["id"])
             try:
-                attributes = self.client.get_device_attributes(
+                attributes = await self.client.async_get_device_attributes(
                     device_id, THERMOSTAT_ATTRIBUTES
                 )
                 raise_for_api_error(attributes, f"attributes for device {device_id}")
@@ -167,7 +167,9 @@ class SchluterCoordinator(DataUpdateCoordinator):
             }
             if now - self._energy_updated_at.get(device_id, 0.0) >= energy_interval:
                 try:
-                    hourly_stats = self.client.get_device_hourly_stats(device_id)
+                    hourly_stats = await self.client.async_get_device_hourly_stats(
+                        device_id
+                    )
                     if hourly_stats is not None:
                         for reading in hourly_stats:
                             if not isinstance(reading, dict):

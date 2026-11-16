@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from threading import RLock
+import asyncio
 from typing import Any, TypedDict
 from urllib.parse import urlparse
 
-import requests
+import aiohttp
 
 JsonObject = dict[str, Any]
 JsonValue = JsonObject | list[JsonObject]
@@ -59,53 +59,48 @@ class SchluterDeviceError(SchluterApiError):
 
 
 class SchluterApi:
-    """Own the HTTP session and normalize transport errors."""
+    """Use Home Assistant's shared session and normalize transport errors."""
 
-    def __init__(self, timeout: int) -> None:
-        self._session = requests.Session()
-        self._timeout = timeout
-        self._lock = RLock()
+    def __init__(self, session: aiohttp.ClientSession, timeout: int) -> None:
+        self._session = session
+        self._timeout = aiohttp.ClientTimeout(total=timeout)
+        self._lock = asyncio.Lock()
 
-    def request_json(self, method: str, url: str, **kwargs: Any) -> JsonValue:
+    async def async_request_json(
+        self, method: str, url: str, **kwargs: Any
+    ) -> JsonValue:
         """Issue a request and return a validated JSON object or list."""
         try:
-            with self._lock:
-                response = self._session.request(
+            async with self._lock:
+                async with self._session.request(
                     method,
                     url,
                     timeout=self._timeout,
                     **kwargs,
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except requests.HTTPError as err:
-            response = err.response
+                ) as response:
+                    response.raise_for_status()
+                    payload = await response.json(content_type=None)
+        except aiohttp.ClientResponseError as err:
             if (
-                response is not None
-                and response.status_code in {401, 403}
+                err.status in {401, 403}
                 and method.upper() == "POST"
                 and urlparse(url).path.endswith("/api/login")
             ):
                 raise SchluterInvalidAuth(
-                    str(response.status_code),
+                    str(err.status),
                     "Schluter rejected the account credentials",
                 ) from err
             raise SchluterRequestError(
                 f"Schluter cloud request failed: {err}"
             ) from err
-        except requests.RequestException as err:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise SchluterRequestError(f"Schluter cloud request failed: {err}") from err
-        except ValueError as err:
+        except (ValueError, UnicodeError) as err:
             raise SchluterRequestError("Schluter cloud returned invalid JSON") from err
 
         if not isinstance(payload, (dict, list)):
             raise SchluterRequestError("Schluter cloud returned an unexpected JSON value")
         return payload
-
-    def close(self) -> None:
-        """Close the underlying HTTP session."""
-        with self._lock:
-            self._session.close()
 
 
 def require_object(payload: JsonValue, context: str) -> JsonObject:
