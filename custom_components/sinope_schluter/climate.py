@@ -118,7 +118,7 @@ class SchluterThermostat(SchluterEntity, ClimateEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "thermostat"
     _enable_turn_on_off_backwards_compatibility = False
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(
         self,

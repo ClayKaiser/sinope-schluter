@@ -10,7 +10,7 @@ NAME = f"{_manifest['name']}"
 DOMAIN = f"{_manifest['domain']}"
 VERSION = f"{_manifest['version']}"
 ISSUE_URL = f"{_manifest['issue_tracker']}"
-REQUIRE = "2025.1.1"
+REQUIRE = f"{_manifest['homeassistant']}"
 DOC_URL = f"{_manifest['documentation']}"
 
 SUPPORTED_DEVICE_MODELS = {740}

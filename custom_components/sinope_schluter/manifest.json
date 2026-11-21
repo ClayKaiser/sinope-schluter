@@ -1,6 +1,7 @@
 {
   "domain": "sinope_schluter",
   "name": "Schluter DITRA-HEAT-E-RS1",
+  "homeassistant": "2026.11.0",
   "config_flow": true,
   "codeowners": [
     "@ClayKaiser"

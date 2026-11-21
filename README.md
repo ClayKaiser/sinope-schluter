@@ -21,7 +21,7 @@ other Schluter device models.
 ## Requirements
 
 - A Schluter account with a DITRA-HEAT-E-RS1 thermostat added to it.
-- Home Assistant with internet access.
+- Home Assistant 2026.11.0 or newer with internet access.
 
 ## Installation
 

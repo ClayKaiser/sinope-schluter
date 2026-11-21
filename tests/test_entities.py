@@ -145,7 +145,7 @@ async def test_entities_update_state_and_run_climate_commands(hass):
         | ClimateEntityFeature.TURN_OFF
         | ClimateEntityFeature.TURN_ON
     )
-    assert climate.temperature_unit == UnitOfTemperature.CELSIUS
+    assert climate.native_temperature_unit == UnitOfTemperature.CELSIUS
     assert climate.preset_mode == PRESET_NONE
     assert climate.preset_modes == [PRESET_NONE, PRESET_AWAY, PRESET_ECO, PRESET_BYPASS]
     assert climate.is_on
