@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
+import homeassistant.helpers.config_validation as cv
 from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
 from .api import (
     DeviceInfo,
@@ -23,17 +24,15 @@ from .api import (
     SchluterApi,
     SchluterApiError,
     SchluterDeviceError,
+    SchluterError,
     SchluterInvalidAuth,
     SchluterRequestError,
     SchluterSessionExpired,
-    SchluterError,
     raise_for_api_error,
     require_list,
     require_object,
 )
 from .const import (
-    DOMAIN,
-    SUPPORTED_DEVICE_MODELS,
     ATTR_AUX_CONFIG,
     ATTR_AUX_CYCLE_LENGTH,
     ATTR_BACKLIGHT,
@@ -48,10 +47,13 @@ from .const import (
     ATTR_SETPOINT_MODE,
     ATTR_SHED_STATUS,
     ATTR_SIGNATURE,
-    ATTR_TIME,
     ATTR_TEMP,
+    ATTR_TIME,
+    DOMAIN,
     STARTUP_MESSAGE,
+    SUPPORTED_DEVICE_MODELS,
 )
+
 PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,10 +61,10 @@ _LOGGER = logging.getLogger(__name__)
 API_TIMEOUT = 30
 SESSION_LIMIT_RETRY_DELAY = 5 * 60
 HOST = "https://schluterditraheat.com"
-LOGIN_URL = "{}/api/login".format(HOST)
-LOCATIONS_URL = "{}/api/locations?account$id=".format(HOST)
-GATEWAY_DEVICE_URL = "{}/api/devices?location$id=".format(HOST)
-DEVICE_DATA_URL = "{}/api/device/".format(HOST)
+LOGIN_URL = f"{HOST}/api/login"
+LOCATIONS_URL = f"{HOST}/api/locations?account$id="
+GATEWAY_DEVICE_URL = f"{HOST}/api/devices?location$id="
+DEVICE_DATA_URL = f"{HOST}/api/device/"
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -75,29 +77,37 @@ if TYPE_CHECKING:
 class SchluterData:
     """Runtime data shared by Schluter platforms."""
 
-    api_client: "SchluterApiClient"
-    coordinator: "SchluterCoordinator | None" = None
+    api_client: SchluterApiClient
+    coordinator: SchluterCoordinator = field(init=False)
 
 
 type SchluterConfigEntry = ConfigEntry[SchluterData]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up integration-wide actions."""
+    from .services import async_setup_services
+
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SchluterConfigEntry) -> bool:
     """Set up Schluter from a config entry."""
     _LOGGER.info(STARTUP_MESSAGE)
 
-    data = SchluterData(
-        api_client=SchluterApiClient(
+    api_client = SchluterApiClient(
             hass,
             async_get_clientsession(hass),
             entry.data["username"],
             entry.data["password"],
-        )
     )
     try:
-        await data.api_client.async_connect()
+        await api_client.async_connect()
     except SchluterInvalidAuth as err:
-        raise ConfigEntryAuthFailed("Schluter rejected the account credentials") from err
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN, translation_key="invalid_auth"
+        ) from err
     except SchluterError as err:
         if isinstance(err, SchluterApiError) and err.code == "ACCSESSEXC":
             _LOGGER.warning(
@@ -105,16 +115,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: SchluterConfigEntry) -> 
                 "deferring the Home Assistant setup retry for 5 minutes"
             )
             await asyncio.sleep(SESSION_LIMIT_RETRY_DELAY)
-        raise ConfigEntryNotReady(f"Unable to connect to Schluter: {err}") from err
+        raise ConfigEntryNotReady(
+            translation_domain=DOMAIN, translation_key="cannot_connect"
+        ) from err
 
     from .coordinator import SchluterCoordinator
 
+    data = SchluterData(api_client=api_client)
     data.coordinator = SchluterCoordinator(hass, entry, data.api_client)
-    data.api_client.set_coordinator_refresh_callback(
-        lambda: data.coordinator.async_request_refresh()
-        if data.coordinator is not None
-        else None
-    )
+    data.api_client.set_coordinator_refresh_callback(data.coordinator.async_request_refresh)
     await data.coordinator.async_config_entry_first_refresh()
     entry.runtime_data = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -123,9 +132,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SchluterConfigEntry) -> 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SchluterConfigEntry) -> bool:
     """Unload Schluter platforms."""
-    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        return False
-    return True
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 class SchluterApiClient:
 
@@ -148,9 +155,7 @@ class SchluterApiClient:
         self._api = SchluterApi(session, timeout)
         self._coordinator_refresh_callback: Callable[[], object] | None = None
 
-    def set_coordinator_refresh_callback(
-        self, callback: Callable[[], object]
-    ) -> None:
+    def set_coordinator_refresh_callback(self, callback: Callable[[], object]) -> None:
         """Set the callback used to refresh entities after an API update."""
         self._coordinator_refresh_callback = callback
 
@@ -163,6 +168,11 @@ class SchluterApiClient:
     async def async_reconnect(self) -> None:
         """Reestablish the API session and refresh device information."""
         await self.__async_post_login_page()
+        await self.__async_get_network()
+        await self.__async_get_gateway_data()
+
+    async def async_refresh_devices(self) -> None:
+        """Refresh the complete supported-device inventory."""
         await self.__async_get_network()
         await self.__async_get_gateway_data()
 
@@ -330,86 +340,115 @@ class SchluterApiClient:
         _LOGGER.debug("lock.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_early_start(self, device_id, start):
+    async def async_set_early_start(
+        self, device_id: str | int, start: str
+    ) -> None:
         """Set device early start heating on / off."""
         data = {ATTR_EARLY_START: start}
         _LOGGER.debug("start.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_second_display(self, device_id, display):
+    async def async_set_second_display(
+        self, device_id: str | int, display: str
+    ) -> None:
         """Set device second display for outside temperature or setpoint temperature."""
         data = {ATTR_DISPLAY_2: display}
         _LOGGER.debug("display.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_time_format(self, device_id, time):
+    async def async_set_time_format(
+        self, device_id: str | int, time: str
+    ) -> None:
         """Set device time format 12h or 24h."""
         data = {ATTR_TIME: time}
         _LOGGER.debug("time.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_temperature_format(self, device_id, temp):
+    async def async_set_temperature_format(
+        self, device_id: str | int, temp: str
+    ) -> None:
         """Set device temperature format: celsius or fahrenheit."""
         data = {ATTR_TEMP: temp}
         _LOGGER.debug("temperature.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_backlight(self, device_id, level):
+    async def async_set_backlight(
+        self, device_id: str | int, level: int
+    ) -> None:
         """ Set backlight intensity when idle """
         data = {ATTR_BACKLIGHT: level}
         _LOGGER.debug("backlight.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_setpoint_min(self, device_id, temp):
+    async def async_set_setpoint_min(
+        self, device_id: str | int, temp: float
+    ) -> None:
         """Set device setpoint minimum temperature."""
         data = {ATTR_ROOM_SETPOINT_MIN: temp}
         _LOGGER.debug("setpointMin.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_setpoint_max(self, device_id, temp):
+    async def async_set_setpoint_max(
+        self, device_id: str | int, temp: float
+    ) -> None:
         """Set device setpoint maximum temperature."""
         data = {ATTR_ROOM_SETPOINT_MAX: temp}
         _LOGGER.debug("setpointMax.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_em_heat(self, device_id, heat, cycle, floor):
+    async def async_set_em_heat(
+        self,
+        device_id: str | int,
+        heat: str,
+        cycle: str | None,
+        floor: bool,
+    ) -> None:
         """Set floor and low voltage thermostats emergency heating slave/off."""
-        if floor:
+        if floor or heat == "off":
             data = {ATTR_AUX_CONFIG: heat}
+        elif cycle is None:
+            raise SchluterRequestError(
+                "Auxiliary cycle length is required for low-voltage emergency heat"
+            )
         else:
-            if heat == "off":
-                data = {ATTR_AUX_CONFIG: heat}
-            else:
-                data = {ATTR_AUX_CONFIG: heat, ATTR_AUX_CYCLE_LENGTH: cycle}
+            data = {ATTR_AUX_CONFIG: heat, ATTR_AUX_CYCLE_LENGTH: cycle}
         _LOGGER.debug("em_heat.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_cycle_length(self, device_id, length):
+    async def async_set_cycle_length(
+        self, device_id: str | int, length: str
+    ) -> None:
         """Set low voltage thermostats main heating cycle."""
         data = {ATTR_CYCLE_LENGTH: length}
         _LOGGER.debug("cycle.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_aux_cycle_length(self, device_id, output, length):
+    async def async_set_aux_cycle_length(
+        self, device_id: str | int, output: str, length: str
+    ) -> None:
         """Set low voltage thermostats auxiliary heating output and cycle."""
         data = {ATTR_AUX_CONFIG: output, ATTR_AUX_CYCLE_LENGTH: length}
         _LOGGER.debug("aux_cycle.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_eco_status(self, device_id, status):
+    async def async_set_eco_status(
+        self, device_id: str | int, status: int
+    ) -> None:
         """Set thermostats eco status on/off."""
         data = {ATTR_SHED_STATUS:{"temperature": status,"power":0,"optOut":0}}
         _LOGGER.debug("Eco.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_air_floor_mode(self, device_id, mode):
+    async def async_set_air_floor_mode(
+        self, device_id: str | int, mode: str
+    ) -> None:
         """Set ambiant or floor temperature control for floor thermostats."""
         data = {ATTR_FLOOR_MODE: mode}
         _LOGGER.debug("airFloorMode.data = %s", data)
         await self.async_set_device_attributes(device_id, data)
 
     async def async_set_device_attributes(
-        self, device_id: str | int, data: JsonObject
+        self, device_id: str | int, data: Mapping[str, object]
     ) -> None:
         """Set devices attributes."""
         for attempt in range(3):

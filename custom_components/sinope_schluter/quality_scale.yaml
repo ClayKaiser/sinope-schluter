@@ -2,18 +2,21 @@ rules:
   # Bronze
   action-setup: done
   appropriate-polling: done
-  brands: done
+  # Requires a separate pull request to home-assistant/brands.
+  brands: todo
   common-modules: done
-  config-flow-test-coverage: todo
+  config-flow-test-coverage: done
   config-flow: done
   dependency-transparency: done
   docs-actions: done
-  docs-conditions: todo
+  # The integration provides no custom conditions.
+  docs-conditions: exempt
   docs-high-level-description: done
   docs-installation-instructions: done
   docs-removal-instructions: done
+  # The integration provides no custom triggers.
   docs-triggers: exempt
-  entity-event-setup: exempt
+  entity-event-setup: done
   entity-unique-id: done
   has-entity-name: done
   runtime-data: done
@@ -31,32 +34,37 @@ rules:
   log-when-unavailable: done
   parallel-updates: done
   reauthentication-flow: done
-  test-coverage: todo
+  test-coverage: done
 
   # Gold
   devices: done
-  diagnostics: todo
+  diagnostics: done
   discovery: exempt
   discovery-update-info: exempt
   docs-data-update: done
-  docs-examples: todo
+  docs-examples: done
   docs-known-limitations: done
   docs-supported-devices: done
   docs-supported-functions: done
   docs-troubleshooting: done
   docs-use-cases: done
   dynamic-devices: done
-  entity-category: todo
+  # There are no configuration or diagnostic entities.
+  entity-category: exempt
   entity-device-class: done
+  # All exposed entities are core thermostat and energy features.
   entity-disabled-by-default: exempt
-  entity-translations: todo
+  entity-translations: done
   exception-translations: done
-  icon-translations: todo
+  # Entities use the default climate and energy device-class icons.
+  icon-translations: exempt
   reconfiguration-flow: exempt
-  repair-issues: todo
-  stale-devices: todo
+  # Authentication failures use reauthentication; no other actionable repair case is known.
+  repair-issues: exempt
+  stale-devices: done
 
   # Platinum
   async-dependency: done
   inject-websession: done
-  strict-typing: done
+  # Local strict mypy passes; the Core marker needs a separate PR.
+  strict-typing: todo

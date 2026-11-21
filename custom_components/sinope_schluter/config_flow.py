@@ -3,16 +3,16 @@
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import SchluterApiClient
-from .api import SchluterInvalidAuth, SchluterError
+from .api import SchluterError, SchluterInvalidAuth
 from .const import DOMAIN, NAME
 
-CONFIG_SCHEMA = vol.Schema(
+CONFIG_SCHEMA: Any = vol.Schema(
     {
         vol.Required(CONF_USERNAME): selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
@@ -28,8 +28,6 @@ class SchluterConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle Schluter config flow."""
 
     VERSION = 1
-    _reauth_entry: ConfigEntry | None = None
-
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -51,18 +49,14 @@ class SchluterConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Start reauthentication for an existing config entry."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
-        if self._reauth_entry is None:
-            return self.async_abort(reason="reauth_failed")
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Update the stored account credentials."""
-        if self._reauth_entry is None:
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if entry is None:
             return self.async_abort(reason="reauth_failed")
 
         if user_input is not None:
@@ -74,7 +68,7 @@ class SchluterConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors=errors,
                 )
             return self.async_update_reload_and_abort(
-                self._reauth_entry,
+                entry,
                 data_updates=user_input,
             )
 

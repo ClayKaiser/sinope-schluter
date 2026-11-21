@@ -4,16 +4,14 @@ import json
 import pathlib
 
 # Base component constants, some loaded directly from the manifest
-_LOADER_PATH = pathlib.Path(__loader__.path)
-_MANIFEST_PATH = _LOADER_PATH.parent / "manifest.json"
-with pathlib.Path.open(_MANIFEST_PATH, encoding="Latin1") as json_file:
-    data = json.load(json_file)
-NAME = f"{data['name']}"
-DOMAIN = f"{data['domain']}"
-VERSION = f"{data['version']}"
-ISSUE_URL = f"{data['issue_tracker']}"
+_MANIFEST_PATH = pathlib.Path(__file__).parent / "manifest.json"
+_manifest = json.loads(_MANIFEST_PATH.read_text(encoding="Latin1"))
+NAME = f"{_manifest['name']}"
+DOMAIN = f"{_manifest['domain']}"
+VERSION = f"{_manifest['version']}"
+ISSUE_URL = f"{_manifest['issue_tracker']}"
 REQUIRE = "2025.1.1"
-DOC_URL = f"{data['documentation']}"
+DOC_URL = f"{_manifest['documentation']}"
 
 SUPPORTED_DEVICE_MODELS = {740}
 

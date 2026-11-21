@@ -3,31 +3,25 @@
 import datetime
 import logging
 from datetime import datetime as dt
-from typing import Any
 
-from .coordinator import SchluterCoordinator
-from . import SchluterConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
-
 from homeassistant.const import UnitOfEnergy
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import (
-    DOMAIN,
-    SUPPORTED_DEVICE_MODELS,
-)
+from . import SchluterConfigEntry
+from .api import DeviceInfo as SchluterDeviceInfo
+from .coordinator import SchluterCoordinator
+from .entity import SchluterEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-IMPLEMENTED_THERMOSTAT_MODEL = SUPPORTED_DEVICE_MODELS
 PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -37,96 +31,86 @@ async def async_setup_entry(
     """Set up the Schluter energy sensor."""
     data = entry.runtime_data
 
-    entities = []
-    for device_info in data.api_client.gateway_data:
-        if "signature" in device_info and \
-            "model" in device_info["signature"] and \
-            device_info["signature"]["model"] in IMPLEMENTED_THERMOSTAT_MODEL:
-            device_name = device_info["name"]
-            device_sku = device_info["sku"]
-            entities.append(
-                SchluterEnergySensor(
-                    data.coordinator, device_info, device_name, device_sku
-                )
-            )
+    known_devices: set[str] = set()
 
-    async_add_entities(entities)
+    @callback
+    def _add_new_devices() -> None:
+        current_devices = {
+            str(device["id"]): device for device in data.api_client.gateway_data
+        }
+        known_devices.intersection_update(current_devices)
+        new_device_ids = current_devices.keys() - known_devices
+        if not new_device_ids:
+            return
 
-class SchluterEnergySensor(CoordinatorEntity, SensorEntity):
+        entities = []
+        for device_id in new_device_ids:
+            device_info = current_devices[device_id]
+            entities.append(SchluterEnergySensor(data.coordinator, device_info))
+        known_devices.update(new_device_ids)
+        async_add_entities(entities)
+
+    _add_new_devices()
+    entry.async_on_unload(data.coordinator.async_add_listener(_add_new_devices))
+
+
+class SchluterEnergySensor(SchluterEntity, SensorEntity):
     """Sensor for daily energy consumption from a thermostat."""
 
     _attr_has_entity_name = True
-    _attr_name = "Daily Energy"
+    _attr_translation_key = "daily_energy"
 
     def __init__(
         self,
         coordinator: SchluterCoordinator,
-        device_info,
-        name,
-        sku,
-    ):
+        device_info: SchluterDeviceInfo,
+    ) -> None:
         """Initialize the daily energy sensor."""
-        super().__init__(coordinator)
-        self._device_id = str(device_info["id"])
-        self._device_name = name
-        self._sku = sku
-        self._attr_native_value = 0.0  # Initialize with 0 to keep entity available
+        super().__init__(coordinator, device_info)
+        self._attr_native_value: float = 0.0
         # Initialize last_reset to midnight UTC
-        now_utc = dt.now(datetime.timezone.utc)
-        self._attr_last_reset = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        self._attr_unique_id = f"{self._device_id}_daily_energy"
-        self._last_energy_update = None
-        _LOGGER.debug("Setting up daily energy sensor for %s: %s", self._attr_name, device_info)
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information to group with thermostat entity."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._device_id)},
-            name=self._device_name,
-            manufacturer="Schluter",
-            model=self._sku,
+        now_utc = dt.now(datetime.UTC)
+        self._attr_last_reset: datetime.datetime = now_utc.replace(
+            hour=0, minute=0, second=0, microsecond=0
         )
+        self._attr_unique_id = f"{self._device_id}_daily_energy"
+        self._last_energy_update: datetime.datetime | None = None
+        _LOGGER.debug("Setting up daily energy sensor for %s", self._device_name)
 
     @property
-    def native_value(self):
+    def native_value(self) -> float:
         """Return the cumulative daily energy consumption in kWh."""
         return self._attr_native_value
 
     @property
-    def native_unit_of_measurement(self):
+    def native_unit_of_measurement(self) -> str:
         """Return the unit of measurement."""
         return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
-    def device_class(self):
+    def device_class(self) -> SensorDeviceClass:
         """Return the device class."""
         return SensorDeviceClass.ENERGY
 
     @property
-    def state_class(self):
+    def state_class(self) -> SensorStateClass:
         """Return the state class indicating this is a total aggregated value."""
         return SensorStateClass.TOTAL
 
     @property
-    def last_reset(self):
+    def last_reset(self) -> datetime.datetime:
         """Return midnight UTC for the current daily total."""
         return self._attr_last_reset
 
     @property
-    def icon(self):
-        """Return the icon."""
-        return "mdi:flash"
-
-    @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str]:
         """Return the state attributes."""
         return {
             'sku': self._sku,
             'id': self._device_id,
         }
 
-    def _parse_iso_timestamp(self, iso_str):
+    def _parse_iso_timestamp(self, iso_str: str) -> datetime.datetime | None:
         """Parse ISO 8601 timestamp string to datetime object."""
         if not isinstance(iso_str, str):
             _LOGGER.error("Invalid energy timestamp: %s", iso_str)
@@ -137,26 +121,26 @@ class SchluterEnergySensor(CoordinatorEntity, SensorEntity):
                 iso_str = iso_str[:-1] + '+00:00'
             parsed = dt.fromisoformat(iso_str)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=datetime.timezone.utc)
-            return parsed.astimezone(datetime.timezone.utc)
+                parsed = parsed.replace(tzinfo=datetime.UTC)
+            return parsed.astimezone(datetime.UTC)
         except ValueError as err:
             _LOGGER.error("Failed to parse timestamp %s: %s", iso_str, err)
             return None
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize energy state from the coordinator's first refresh."""
         await super().async_added_to_hass()
         self._update_from_coordinator()
 
-    def _handle_coordinator_update(self):
+    def _handle_coordinator_update(self) -> None:
         """Update energy state from coordinator data."""
         self._update_from_coordinator()
         super()._handle_coordinator_update()
 
-    def _update_from_coordinator(self):
+    def _update_from_coordinator(self) -> None:
         """Update daily energy from data collected by the coordinator."""
         # Wait until the API has had time to publish the current hour's reading.
-        now_utc = dt.now(datetime.timezone.utc)
+        now_utc = dt.now(datetime.UTC)
         current_period = now_utc.replace(minute=0, second=0, microsecond=0)
         midnight_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -167,10 +151,13 @@ class SchluterEnergySensor(CoordinatorEntity, SensorEntity):
         if now_utc.minute < 5:
             return  # Too early; wait for API to update
 
-        device_data = self.coordinator.data.get(self._device_id, {})
+        coordinator_data = self.coordinator.data
+        if coordinator_data is None:
+            return
+        device_data = coordinator_data.get(self._device_id, {})
         device_hourly_stats = device_data.get("hourly_stats")
         energy_updated_at = device_data.get("energy_updated_at")
-        _LOGGER.debug("Hourly stats for %s: %s", self._attr_name, device_hourly_stats)
+        _LOGGER.debug("Hourly stats for %s: %s", self._device_name, device_hourly_stats)
         if (
             not isinstance(energy_updated_at, datetime.datetime)
             or energy_updated_at < current_period
@@ -190,7 +177,7 @@ class SchluterEnergySensor(CoordinatorEntity, SensorEntity):
         self._last_energy_update = energy_updated_at
         _LOGGER.debug(
             "Updated cumulative daily energy for %s: %s kWh (%d entries since midnight)",
-            self._attr_name,
+            self._device_name,
             self._attr_native_value,
             len(today_entries),
         )

@@ -1,28 +1,21 @@
 """Tests for the asynchronous Schluter HTTP transport."""
 
-import sys
 import unittest
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
+from types import SimpleNamespace
 
 import aiohttp
 
-API_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "custom_components"
-    / "sinope_schluter"
-    / "api.py"
+from custom_components.sinope_schluter.api import (
+    SchluterApi,
+    SchluterApiError,
+    SchluterDeviceError,
+    SchluterInvalidAuth,
+    SchluterRequestError,
+    SchluterSessionExpired,
+    raise_for_api_error,
+    require_list,
+    require_object,
 )
-API_SPEC = spec_from_file_location("sinope_schluter_api", API_PATH)
-if API_SPEC is None or API_SPEC.loader is None:
-    raise RuntimeError("Unable to load the Schluter API module")
-API_MODULE = module_from_spec(API_SPEC)
-sys.modules[API_SPEC.name] = API_MODULE
-API_SPEC.loader.exec_module(API_MODULE)
-
-SchluterApi = API_MODULE.SchluterApi
-SchluterInvalidAuth = API_MODULE.SchluterInvalidAuth
-SchluterRequestError = API_MODULE.SchluterRequestError
 
 
 class FakeResponse:
@@ -39,7 +32,7 @@ class FakeResponse:
     def raise_for_status(self):
         if self.status >= 400:
             raise aiohttp.ClientResponseError(
-                request_info=None,
+                request_info=SimpleNamespace(real_url="https://schluterditraheat.com"),
                 history=(),
                 status=self.status,
             )
@@ -108,6 +101,58 @@ class SchluterApiTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(SchluterRequestError, "connection failed"):
             await api.async_request_json(
                 "GET", "https://schluterditraheat.com/api/devices"
+            )
+
+    async def test_timeout_and_non_json_values_are_reported(self):
+        timeout_api = SchluterApi(
+            FakeSession(error=TimeoutError()), timeout=30
+        )
+        with self.assertRaises(SchluterRequestError):
+            await timeout_api.async_request_json(
+                "GET", "https://schluterditraheat.com/api/devices"
+            )
+
+        invalid_api = SchluterApi(FakeSession(FakeResponse(200, 42)), timeout=30)
+        with self.assertRaisesRegex(SchluterRequestError, "unexpected JSON"):
+            await invalid_api.async_request_json(
+                "GET", "https://schluterditraheat.com/api/devices"
+            )
+
+    async def test_non_login_http_errors_are_request_errors(self):
+        api = SchluterApi(FakeSession(FakeResponse(403, {})), timeout=30)
+        with self.assertRaises(SchluterRequestError):
+            await api.async_request_json(
+                "GET", "https://schluterditraheat.com/api/devices"
+            )
+
+    def test_require_object_and_list_validate_payloads(self):
+        self.assertEqual(require_object({"ok": True}, "response"), {"ok": True})
+        self.assertEqual(require_list([{"id": 1}], "response"), [{"id": 1}])
+        with self.assertRaises(SchluterRequestError):
+            require_object([], "response")
+        with self.assertRaises(SchluterRequestError):
+            require_list([{"id": 1}, None], "response")
+
+    def test_api_errors_are_converted_to_typed_exceptions(self):
+        raise_for_api_error({"ok": True}, "response")
+        with self.assertRaises(SchluterRequestError):
+            raise_for_api_error({"error": "malformed"}, "response")
+        with self.assertRaises(SchluterDeviceError):
+            raise_for_api_error({"errorCode": "DVCUNVLB"}, "response")
+        with self.assertRaises(SchluterSessionExpired):
+            raise_for_api_error(
+                {"error": {"code": "USRSESSEXP", "message": "expired"}},
+                "response",
+            )
+        with self.assertRaises(SchluterDeviceError):
+            raise_for_api_error(
+                {"error": {"code": "DVCUNVLB", "message": "offline"}},
+                "response",
+            )
+        with self.assertRaises(SchluterApiError):
+            raise_for_api_error(
+                {"error": {"code": "UNKNOWN", "message": "failed"}},
+                "response",
             )
 
 

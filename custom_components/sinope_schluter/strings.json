@@ -34,5 +34,40 @@
       "already_configured": "This Schluter account is already configured.",
       "reauth_failed": "Unable to find the Schluter config entry."
     }
+  },
+  "entity": {
+    "climate": {
+      "thermostat": {
+        "name": "Thermostat"
+      }
+    },
+    "sensor": {
+      "daily_energy": {
+        "name": "Daily energy"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Schluter rejected the account credentials."
+    },
+    "cannot_connect": {
+      "message": "Unable to connect to Schluter."
+    },
+    "update_failed": {
+      "message": "Unable to update data from Schluter."
+    },
+    "command_failed": {
+      "message": "Unable to send the command to the Schluter thermostat."
+    },
+    "invalid_command": {
+      "message": "The requested command or value is not supported."
+    },
+    "target_required": {
+      "message": "Select at least one Schluter thermostat."
+    },
+    "invalid_target": {
+      "message": "The selected entity is not a Schluter thermostat."
+    }
   }
 }

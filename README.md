@@ -46,6 +46,10 @@ Restart Home Assistant after installation.
 2. Select **Schluter DITRA-HEAT-E-RS1**.
 3. Enter your Schluter account email and password.
 
+The email must be the account's sign-in email, and the password must be the
+current Schluter account password. The integration does not offer configuration
+options after setup.
+
 If your credentials expire or change, Home Assistant will prompt you to
 reauthenticate from the integration page.
 
@@ -68,28 +72,99 @@ for each supported thermostat. Hourly and daily energy values are available as
 total is calculated from hourly readings; the integration does not make a
 separate daily-energy API request.
 
-Thermostat-specific services are available under the `sinope_schluter` service
-domain:
+The climate entity supports off, heat, and auto modes, target temperatures, and
+none, away, eco, and temporary-bypass presets. The sensor reports daily energy
+in kWh. Floor temperature, heating demand, alarms, and device settings are
+available as climate entity attributes.
 
-- `set_activation`
-- `set_air_floor_mode`
-- `set_aux_cycle_length`
-- `set_backlight`
-- `set_climate_keypad_lock`
-- `set_cycle_length`
-- `set_early_start`
-- `set_eco_status`
-- `set_em_heat`
-- `set_second_display`
-- `set_setpoint_max`
-- `set_setpoint_min`
-- `set_temperature_format`
-- `set_time_format`
+Use the standard climate actions for everyday control:
+
+```yaml
+action: climate.set_temperature
+target:
+  entity_id: climate.your_thermostat
+data:
+  temperature: 20
+```
+
+Thermostat-specific actions are available under the `sinope_schluter` domain.
+They target the thermostat climate entity and accept:
+
+- `set_activation`: `active` (`true`/`false`).
+- `set_air_floor_mode`: `airFloorMode` (`airByFloor`/`floor`).
+- `set_aux_cycle_length` and `set_cycle_length`: `value` (one of `15 sec`,
+  `5 min`, `10 min`, `15 min`, `20 min`, `25 min`, or `30 min`).
+- `set_backlight`: `backlightIntensityIdle` (0–100).
+- `set_climate_keypad_lock`: `lockKeypad` (`locked`/`unlocked`).
+- `set_early_start`: `earlyStart` (`on`/`off`).
+- `set_eco_status`: `status` (0/1).
+- `set_em_heat`: `value` (`on`/`off`).
+- `set_second_display`: `secondaryDisplay` (`outsideTemperature`/`default`).
+- `set_setpoint_max` and `set_setpoint_min`: `roomSetpointMax` and
+  `roomSetpointMin`, respectively.
+- `set_temperature_format`: `temperatureFormat` (`celsius`/`fahrenheit`).
+- `set_time_format`: `timeFormat` (12/24).
+
+For example:
+
+```yaml
+action: sinope_schluter.set_backlight
+target:
+  entity_id: climate.your_thermostat
+data:
+  backlightIntensityIdle: 50
+```
 
 Use Home Assistant's **Developer tools → Actions** to view each action's input
 fields and call it.
 
-## Logging and troubleshooting
+The integration does not provide custom conditions or triggers.
+
+## Data updates and limitations
+
+Thermostat attributes are polled every five minutes. Energy history is refreshed
+every 30 minutes, and the account's device inventory is checked hourly. These
+intervals are fixed. The integration requires the Schluter cloud service and
+does not communicate locally with thermostats. A newly added supported
+thermostat appears after the next inventory refresh.
+
+Only model 740 is supported. Energy data depends on hourly history being
+available from Schluter; there may be a delay before the current hour is
+reported. The daily total uses UTC midnight as its reset boundary.
+
+## Use cases
+
+- Set room temperature and switch between automatic scheduling, manual heat,
+  and off from Home Assistant.
+- Use away and eco presets when the home is unoccupied or energy use should be
+  reduced.
+- Track the thermostat's daily energy total alongside other Home Assistant
+  energy data.
+- Automate device settings such as the idle backlight or keypad lock with the
+  integration actions.
+
+## Troubleshooting
+
+- **Authentication error:** Confirm the account email and password by signing in
+  to Schluter, then reauthenticate the integration in Home Assistant.
+- **Thermostat unavailable:** Check that the thermostat is online and the
+  Schluter cloud service is reachable. The entity returns when polling succeeds.
+- **Energy is missing or delayed:** Allow time for Schluter to publish its
+  hourly reading; history refreshes every 30 minutes.
+- **A new thermostat is missing:** Confirm it is model 740 and allow up to one
+  hour for the next inventory check.
+- **An action fails:** Confirm the device is online and the action's field value
+  is within the accepted values listed above, then check the Home Assistant
+  logs.
+
+## Removal
+
+In Home Assistant, remove the **Schluter DITRA-HEAT-E-RS1** config entry from
+**Settings → Devices & services**. To uninstall the integration, remove it in
+HACS or delete `custom_components/sinope_schluter` if installed manually, then
+restart Home Assistant.
+
+## Logging
 
 The integration uses Home Assistant's standard logging. Check the Home Assistant
 logs for errors, and include relevant entries when
@@ -103,3 +178,18 @@ logger:
   logs:
     custom_components.sinope_schluter: debug
 ```
+
+## Development
+
+Install the test dependencies with `python -m pip install -r requirements_test.txt`,
+then run:
+
+```shell
+pytest tests
+coverage run --source=custom_components.sinope_schluter -m pytest tests
+coverage report -m
+mypy
+```
+
+The tests use Home Assistant's custom integration fixtures and do not require a
+Schluter account. Mypy uses strict mode for the integration package.
