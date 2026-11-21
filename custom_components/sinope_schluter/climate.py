@@ -3,10 +3,12 @@ Support for Schluter DITRA-HEAT-E-RS1.
 """
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 import voluptuous as vol
 
 from .coordinator import SchluterCoordinator
+from . import SchluterConfigEntry
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -24,6 +26,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -113,6 +116,7 @@ PRESET_MODES = [
 ]
 
 IMPLEMENTED_DEVICE_MODEL = SUPPORTED_DEVICE_MODELS
+PARALLEL_UPDATES = 1
 
 SET_ACTIVATION_SCHEMA = {
     vol.Required(ATTR_ACTIVE): vol.In([True, False]),
@@ -185,12 +189,12 @@ SET_EM_HEAT_SCHEMA = {
 }
 
 async def async_setup_entry(
-    hass,
-    entry,
-    async_add_entities,
+    hass: HomeAssistant,
+    entry: SchluterConfigEntry,
+    async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up the Schluter thermostats."""
-    data = hass.data[DOMAIN]["data"]
+    data = entry.runtime_data
 
     entities = []
     for device_info in data.api_client.gateway_data:

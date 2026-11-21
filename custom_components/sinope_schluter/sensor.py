@@ -3,8 +3,12 @@
 import datetime
 import logging
 from datetime import datetime as dt
+from typing import Any
 
 from .coordinator import SchluterCoordinator
+from . import SchluterConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -23,14 +27,15 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 IMPLEMENTED_THERMOSTAT_MODEL = SUPPORTED_DEVICE_MODELS
+PARALLEL_UPDATES = 1
 
 async def async_setup_entry(
-    hass,
-    entry,
-    async_add_entities,
+    hass: HomeAssistant,
+    entry: SchluterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Schluter energy sensor."""
-    data = hass.data[DOMAIN]["data"]
+    data = entry.runtime_data
 
     entities = []
     for device_info in data.api_client.gateway_data:

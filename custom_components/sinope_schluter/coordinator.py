@@ -6,7 +6,6 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import (
@@ -57,6 +56,7 @@ from .const import (
     DOMAIN,
 )
 from . import SchluterApiClient
+from . import SchluterConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class SchluterCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        entry: ConfigEntry,
+        entry: SchluterConfigEntry,
         client: SchluterApiClient,
     ) -> None:
         """Initialize the coordinator."""

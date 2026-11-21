@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Schluter account",
+        "description": "Enter the credentials for your Schluter account.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        },
+        "data_description": {
+          "username": "The email address used for your Schluter account",
+          "password": "The password used for your Schluter account"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Schluter",
+        "description": "Enter updated credentials for your Schluter account.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        },
+        "data_description": {
+          "username": "The email address used for your Schluter account",
+          "password": "The password used for your Schluter account"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The Schluter account credentials are not valid.",
+      "cannot_connect": "Unable to connect to Schluter."
+    },
+    "abort": {
+      "already_configured": "This Schluter account is already configured.",
+      "reauth_failed": "Unable to find the Schluter config entry."
+    }
+  }
+}

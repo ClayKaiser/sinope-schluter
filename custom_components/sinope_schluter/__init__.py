@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import cast
+from dataclasses import dataclass
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigEntry
@@ -65,18 +67,32 @@ DEVICE_DATA_URL = "{}/api/device/".format(HOST)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+if TYPE_CHECKING:
+    from .coordinator import SchluterCoordinator
+
+
+@dataclass
+class SchluterData:
+    """Runtime data shared by Schluter platforms."""
+
+    api_client: "SchluterApiClient"
+    coordinator: "SchluterCoordinator | None" = None
+
+
+type SchluterConfigEntry = ConfigEntry[SchluterData]
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: SchluterConfigEntry) -> bool:
     """Set up Schluter from a config entry."""
     _LOGGER.info(STARTUP_MESSAGE)
 
-    hass.data.setdefault(DOMAIN, {})
-
-    data = SchluterData()
-    data.api_client = SchluterApiClient(
-        hass,
-        async_get_clientsession(hass),
-        entry.data["username"],
-        entry.data["password"],
+    data = SchluterData(
+        api_client=SchluterApiClient(
+            hass,
+            async_get_clientsession(hass),
+            entry.data["username"],
+            entry.data["password"],
+        )
     )
     try:
         await data.api_client.async_connect()
@@ -93,33 +109,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     from .coordinator import SchluterCoordinator
 
-    try:
-        data.coordinator = SchluterCoordinator(hass, entry, data.api_client)
-        await data.coordinator.async_config_entry_first_refresh()
-        hass.data[DOMAIN]["data"] = data
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        return True
-    except Exception:
-        hass.data[DOMAIN].pop("data", None)
-        raise
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload Schluter platforms."""
-    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        return False
-
-    hass.data[DOMAIN].pop("data", None)
+    data.coordinator = SchluterCoordinator(hass, entry, data.api_client)
+    data.api_client.set_coordinator_refresh_callback(
+        lambda: data.coordinator.async_request_refresh()
+        if data.coordinator is not None
+        else None
+    )
+    await data.coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = data
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-class SchluterData:
-    """Get the latest data and update the states."""
-
-    def __init__(self):
-        """Initialize shared Schluter data."""
-        self.api_client: SchluterApiClient
-        self.coordinator = None
+async def async_unload_entry(hass: HomeAssistant, entry: SchluterConfigEntry) -> bool:
+    """Unload Schluter platforms."""
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
+    return True
 
 class SchluterApiClient:
 
@@ -140,6 +146,13 @@ class SchluterApiClient:
         self.gateway_data: list[DeviceInfo] = []
         self._headers: dict[str, str] | None = None
         self._api = SchluterApi(session, timeout)
+        self._coordinator_refresh_callback: Callable[[], object] | None = None
+
+    def set_coordinator_refresh_callback(
+        self, callback: Callable[[], object]
+    ) -> None:
+        """Set the callback used to refresh entities after an API update."""
+        self._coordinator_refresh_callback = callback
 
     async def async_connect(self) -> None:
         """Log in and load supported thermostats."""
@@ -295,17 +308,23 @@ class SchluterApiClient:
             )
         return readings
 
-    async def async_set_setpoint_mode(self, device_id, mode):
+    async def async_set_setpoint_mode(
+        self, device_id: str | int, mode: str
+    ) -> None:
         """Set thermostat operation mode."""
         data = {ATTR_SETPOINT_MODE: mode}
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_temperature(self, device_id, temperature):
+    async def async_set_temperature(
+        self, device_id: str | int, temperature: float
+    ) -> None:
         """Set device temperature."""
         data = {ATTR_ROOM_SETPOINT: temperature}
         await self.async_set_device_attributes(device_id, data)
 
-    async def async_set_keypad_lock(self, device_id, lock):
+    async def async_set_keypad_lock(
+        self, device_id: str | int, lock: str
+    ) -> None:
         """Set device keyboard locked/unlocked."""
         data = {ATTR_KEYPAD: lock}
         _LOGGER.debug("lock.data = %s", data)
@@ -419,9 +438,7 @@ class SchluterApiClient:
             self._request_coordinator_refresh()
             return
 
-    def _request_coordinator_refresh(self):
+    def _request_coordinator_refresh(self) -> None:
         """Refresh entities after a successful command."""
-        integration_data = self.hass.data.get(DOMAIN, {}).get("data")
-        coordinator = getattr(integration_data, "coordinator", None)
-        if coordinator is not None:
-            self.hass.add_job(coordinator.async_request_refresh)
+        if self._coordinator_refresh_callback is not None:
+            self.hass.add_job(self._coordinator_refresh_callback)
